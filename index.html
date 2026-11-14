@@ -686,13 +686,14 @@ function escZap(r){
 }
 
 // =================== APP DO FUNCIONÁRIO ===================
+var BANCO_FUNC=false; // banco de horas escondido do app do funcionário até começar (previsão 2027); a gestão continua vendo
 function irMeu(){
   S.modo='fun';aplicarTema();
   $('tGestao').classList.add('oculto');$('tFun').classList.remove('oculto');
   $('fMain').innerHTML='<div class="fTopo"><div class="ola">Olá!</div><div>Carregando…</div></div>';
   api({acao:'pontoMeu'}).then(function(r){
     if(!r.ok)throw r.erro;S.meu=r;
-    var tabs=r.perfil==='DIARISTA'?[['escala','Escala'],['extras','Meus extras'],['conta','Conta']]:[['inicio','Início'],['batidas','Batidas'],['banco','Banco'],['escala','Escala'],['conta','Conta']];
+    var tabs=r.perfil==='DIARISTA'?[['escala','Escala'],['extras','Meus extras'],['conta','Conta']]:[['inicio','Início'],['batidas','Batidas']].concat(BANCO_FUNC?[['banco','Banco']]:[]).concat([['escala','Escala'],['conta','Conta']]);
     if(r.semCadastro)tabs=[['conta','Conta']];
     $('fTab').innerHTML=tabHTML(tabs);
     $('fTab').querySelectorAll('button').forEach(function(b){b.onclick=function(){fAbrir(b.dataset.t);};});
@@ -715,7 +716,7 @@ function fAbrir(t){
     if(r.fgts)h+='<div class="card" style="border-color:var(--acento)"><b style="font-family:Manrope;font-size:16px">💰 FGTS depositado</b><div style="margin-top:4px">Foi depositado na sua conta Caixa <b>R$ '+esc(r.fgts.valor)+'</b> de FGTS referente a '+esc(MESES[+r.fgts.competencia.slice(0,2)-1])+', no dia '+esc(r.fgts.data.slice(0,5))+'. Esse dinheiro é seu.</div></div>';
     h+='<div class="card"><div class="sub" style="margin-bottom:8px">Batidas de hoje'+(jor.length?' · jornada '+jor.join(' '):'')+'</div><div class="bat">'+['Entrada','Saída almoço','Volta','Saída'].map(function(l,i){return '<div><b>'+(mar[i]||'--:--')+'</b><span>'+l+'</span></div>';}).join('')+'</div>'+(mar.length>4?'<div class="sub" style="margin-top:6px">Mais batidas: '+mar.slice(4).join(' ')+'</div>':'')+'</div>';
     if(r.bonus){var b=r.bonus;h+='<div class="card"><b style="font-family:Manrope;font-size:16px">'+(b.emDia?'⭐ Você está pontual este mês!':'Bônus pontualidade')+'</b><div class="sub" style="margin-top:4px">'+(b.emDia?'Continue assim'+(b.valor?' e ganhe R$ '+esc(b.valor)+' de bônus no fim do mês.':' para ganhar o bônus no fim do mês.'):'Este mês teve '+(b.atrasos?b.atrasos+' atraso(s)':'')+(b.atrasos&&b.faltas?' e ':'')+(b.faltas?b.faltas+' falta(s)':'')+'. O bônus volta no mês que vem.')+'</div></div>';}
-    if(r.banco)h+='<div class="card clic" onclick="fAbrir(\'banco\')" style="cursor:pointer"><div class="sub">Banco de horas</div><div class="grande '+sinal(r.banco.total)+'">'+esc(r.banco.total)+'</div><div class="sub">'+(r.banco.totalMin>=0?'horas a seu favor':'horas que você deve')+' · este mês '+esc(r.banco.mes)+'</div></div>';
+    if(BANCO_FUNC&&r.banco)h+='<div class="card clic" onclick="fAbrir(\'banco\')" style="cursor:pointer"><div class="sub">Banco de horas</div><div class="grande '+sinal(r.banco.total)+'">'+esc(r.banco.total)+'</div><div class="sub">'+(r.banco.totalMin>=0?'horas a seu favor':'horas que você deve')+' · este mês '+esc(r.banco.mes)+'</div></div>';
     var esc1=r.escalaMeus.filter(function(x){return x.status==='ESCALADO';})[0];
     if(esc1)h+='<div class="card"><b>📅 Você está escalado</b><div class="sub">'+esc(esc1.data)+' · '+esc(fn(esc1.funcao))+'</div></div>';
     else if(r.escalaAbertos.length)h+='<div class="card clic" onclick="fAbrir(\'escala\')" style="cursor:pointer"><b>Domingos com vaga</b><div class="sub">'+r.escalaAbertos.length+' dia(s) aberto(s) para trabalho extra. Toque para ver.</div></div>';
