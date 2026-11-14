@@ -204,7 +204,7 @@ function api(p){
 function erro(e){toast(String(e&&e.message||e),true);}
 function hojeBR(){var d=new Date();return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();}
 var FN_NOME={CAIXA:'OP. CAIXA',REPOSITOR:'Repositor',ACOUGUEIRO:'Açougueiro','AUXILIAR ACOUGUE':'Auxiliar de açougue',PADARIA:'Padaria','SERVICOS GERAIS':'Serviços gerais',GERENTE:'Gerente',ENTREGADOR:'Entregador'};
-var ICS={hoje:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9 15l2 2 4-4"/>',espelho:'<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',lanc:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',banco:'<path d="M5 3h14M5 21h14"/><path d="M7 3v3.2c0 1.6 1.2 2.8 3 4.3l2 1.5-2 1.5c-1.8 1.5-3 2.7-3 4.3V21M17 3v3.2c0 1.6-1.2 2.8-3 4.3L12 12l2 1.5c1.8 1.5 3 2.7 3 4.3V21"/><path d="M9.5 19h5l-2.5-2.2z" fill="currentColor" stroke="none"/>',mais:'<circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/>',inicio:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',batidas:'<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="9.5" cy="10" r=".6"/><circle cx="14.5" cy="10" r=".6"/><path d="M9 14.5c1.6 1.4 4.4 1.4 6 0"/>',escala:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8" cy="15" r="1"/><circle cx="12" cy="15" r="1"/><circle cx="16" cy="15" r="1"/>',conta:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',fech:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',func:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.6-5 6.5-5s5.5 1.5 6.5 5M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .6 3.2 2.3 3.5 5"/>',config:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',fgts:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',cartao:'<path d="M3 5h2l2.4 10.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="16.5" cy="19.5" r="1.3"/>',extras:'<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5c-.5-1-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.2 0-2.1-.5-2.6-1.5M12 6.5V8M12 16v1.5"/>',meu:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',sair:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>',ok:'<path d="M5 12.5l4.5 4.5L19 7.5" stroke-width="2.6"/>'};
+var ICS={gerir:'<path d="M9 4h6v3H9z"/><path d="M15 5h3v16H6V5h3"/><path d="M9 13l2 2 4-4"/>',hoje:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9 15l2 2 4-4"/>',espelho:'<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',lanc:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',banco:'<path d="M5 3h14M5 21h14"/><path d="M7 3v3.2c0 1.6 1.2 2.8 3 4.3l2 1.5-2 1.5c-1.8 1.5-3 2.7-3 4.3V21M17 3v3.2c0 1.6-1.2 2.8-3 4.3L12 12l2 1.5c1.8 1.5 3 2.7 3 4.3V21"/><path d="M9.5 19h5l-2.5-2.2z" fill="currentColor" stroke="none"/>',mais:'<circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/>',inicio:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',batidas:'<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="9.5" cy="10" r=".6"/><circle cx="14.5" cy="10" r=".6"/><path d="M9 14.5c1.6 1.4 4.4 1.4 6 0"/>',escala:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8" cy="15" r="1"/><circle cx="12" cy="15" r="1"/><circle cx="16" cy="15" r="1"/>',conta:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',fech:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',func:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.6-5 6.5-5s5.5 1.5 6.5 5M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .6 3.2 2.3 3.5 5"/>',config:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',fgts:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',cartao:'<path d="M3 5h2l2.4 10.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="16.5" cy="19.5" r="1.3"/>',extras:'<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5c-.5-1-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.2 0-2.1-.5-2.6-1.5M12 6.5V8M12 16v1.5"/>',meu:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',sair:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>',ok:'<path d="M5 12.5l4.5 4.5L19 7.5" stroke-width="2.6"/>'};
 function ic(n,s){return '<svg width="'+(s||22)+'" height="'+(s||22)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+(ICS[n]||'')+'</svg>';}
 function logoMP(s,claro){var bg=claro?'#0E4D32':'rgba(155,227,109,.14)';return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="'+bg+'"/><circle cx="50" cy="50" r="34" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="3"/><g stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"><line x1="50" y1="12" x2="50" y2="18"/><line x1="88" y1="50" x2="82" y2="50"/><line x1="50" y1="88" x2="50" y2="82"/><line x1="12" y1="50" x2="18" y2="50"/></g><path d="M32 52 L45 64 L70 34" fill="none" stroke="#9BE36D" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>';}
 function tabHTML(lista){return lista.map(function(t){return '<button data-t="'+t[0]+'"><span class="ic">'+ic(t[0])+'</span>'+t[1]+'</button>';}).join('');}
@@ -268,7 +268,7 @@ function entrar(){
     if(!r.ok){toast(r.erro,true);telaLogin();return;}
     S.ini=r;
     var q=new URLSearchParams(location.search);
-    if((r.gestao||r.escala)&&q.get('meu')!=='1')irGestao();else irMeu();
+    if(r.gestao&&q.get('meu')!=='1')irGestao();else irMeu(); // só-escala (Ney) entra no ponto dele; a escala fica no rodapé
   }).catch(function(e){erro(e);telaLogin();});
 }
 
@@ -282,12 +282,13 @@ function irGestao(){
   var telas=S.ini.gestao?TELAS:[['escala','Escala de domingos e feriados']];
   $('gNav').innerHTML=telas.map(function(t){return '<button class="nav" data-t="'+t[0]+'">'+t[1]+'</button>';}).join('');
   $('gNav').querySelectorAll('button').forEach(function(b){b.onclick=function(){abrir(b.dataset.t);};});
-  $('gTab').innerHTML=tabHTML(S.ini.gestao?TAB_CEL:[['escala','Escala'],['mais','Mais']]);
+  $('gTab').innerHTML=tabHTML(S.ini.gestao?TAB_CEL:[['escala','Escala'],['meu','Meu ponto']]);
   $('gTab').querySelectorAll('button').forEach(function(b){b.onclick=function(){abrir(b.dataset.t);};});
   abrir(S.ini.gestao?(location.hash.slice(1)||'hoje'):'escala');
 }
 function abrir(t){
   if(t==='mais'){menuMais();return;}
+  if(t==='meu'){irMeu();return;}
   S.tela=t;try{history.replaceState(null,'','#'+t);}catch(e){}
   document.querySelectorAll('#gNav .nav').forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});
   document.querySelectorAll('#gTab button').forEach(function(b){b.classList.toggle('on',b.dataset.t===t||(['fech','func','config','fgts','cartao','escala'].indexOf(t)>=0&&b.dataset.t==='mais'));});
@@ -694,13 +695,16 @@ function irMeu(){
   api({acao:'pontoMeu'}).then(function(r){
     if(!r.ok)throw r.erro;S.meu=r;
     var tabs=r.perfil==='DIARISTA'?[['escala','Escala'],['extras','Meus extras'],['conta','Conta']]:[['inicio','Início'],['batidas','Batidas']].concat(BANCO_FUNC?[['banco','Banco']]:[]).concat([['escala','Escala'],['conta','Conta']]);
+    if(S.ini&&S.ini.escala&&!S.ini.gestao&&r.perfil!=='DIARISTA')tabs.splice(tabs.length-1,0,['gerir','Montar escala']);
     if(r.semCadastro)tabs=[['conta','Conta']];
+    if(S.ini&&S.ini.escala&&!S.ini.gestao&&r.semCadastro)tabs=[['gerir','Montar escala'],['conta','Conta']];
     $('fTab').innerHTML=tabHTML(tabs);
     $('fTab').querySelectorAll('button').forEach(function(b){b.onclick=function(){fAbrir(b.dataset.t);};});
     fAbrir(r.semCadastro?'conta':(r.perfil==='DIARISTA'?'escala':'inicio'));
   }).catch(erro);
 }
 function fAbrir(t){
+  if(t==='gerir'){irGestao();return;}
   if(S.meu&&S.meu.semCadastro)t='conta';
   S.ftela=t;window.scrollTo(0,0);
   $('fTab').querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});
