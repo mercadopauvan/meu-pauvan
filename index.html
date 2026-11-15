@@ -323,8 +323,15 @@ function gHoje(data){
     var gr={bad:[],warn:[],wait:[],ok:[],mute:[]};r.itens.forEach(function(i){gr[i.st].push(i);});
     function lin(i){return '<div class="row clic" data-c="'+i.codigo+'"><div class="t"><b>'+esc(i.nome)+'</b><span>'+(i.entrada?'Entrada '+i.entrada+' · ':'')+(i.marcs.length?'bateu '+i.marcs.join(' · '):'sem batida')+(i.alertas.length?' · '+esc(i.alertas.join(', ')):'')+'</span></div><span class="pill '+i.st+'">'+esc(i.txt)+'</span></div>';}
     var h=topoCel('Gestão do ponto',r.dia+', '+r.data)+'<div class="topo"><div><h1>Hoje no ponto</h1><div class="sub">'+r.dia+', '+r.data+' · relógio: '+(r.relogio.ultimoContato?'último contato '+esc(r.relogio.ultimoContato):'<b>programa do servidor ainda não conectado</b>')+'</div></div><div class="linha"><label>Dia<input type="date" id="hData" value="'+brISO(r.data)+'"></label><button class="btn" id="hAtu">Atualizar</button></div></div>';
-    h+='<div class="tiles"><div class="tile"><b>'+c.b+'</b><span>bateram</span></div><div class="tile"><b style="color:var(--wt)">'+c.a+'</b><span>atrasos</span></div><div class="tile"><b style="color:var(--bt)">'+c.s+'</b><span>sem batida</span></div><div class="tile"><b>'+c.o+'</b><span>folga / afastados</span></div></div>';
-    h+='<div class="lista">';
+    var fol=0,aus=0;r.itens.forEach(function(i){if(i.st==='mute'){if(/folga/i.test(i.txt)&&!/trabalhada/i.test(i.txt))fol++;else aus++;}});
+    // v121: todas as batidas do dia, a mais recente em cima
+    var TPB=['entrada','saída almoço','volta','saída'],bl=[];r.itens.forEach(function(i){i.marcs.forEach(function(m,k){bl.push({h:String(m).replace('*',''),nome:primeiroNome(i.nome),tp:TPB[k]||'batida extra',at:k===0&&i.st==='warn'});});});
+    bl.sort(function(a,b){return b.h.localeCompare(a.h);});
+    var hojeEh=r.data===hojeBR(),ult=bl[0];
+    h+='<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:center;gap:12px"><span style="width:10px;height:10px;border-radius:50%;flex:none;background:'+(r.relogio.ultimoContato?'#2DB55D;box-shadow:0 0 0 4px #D6F2DF':'#B3261E')+'"></span><div style="flex:1"><b>Relógio de ponto</b><div class="sub">'+(r.relogio.ultimoContato?'online':'sem contato')+(ult?' · última batida '+ult.h+' ('+esc(ult.nome)+')':'')+'</div></div></div>'+(S.ini.fotoRelogio&&hojeEh?'<button class="btn pri" id="hFoto" style="width:100%;margin-top:10px">📷 Ver o relógio agora</button>':'')+'</div>';
+    h+='<div class="tiles"><div class="tile"><b>'+c.b+'</b><span>bateram</span></div><div class="tile"><b style="color:var(--wt)">'+c.a+'</b><span>atrasos</span></div><div class="tile"><b style="color:var(--bt)">'+c.s+'</b><span>sem batida</span></div><div class="tile" style="background:#EEF4FF;border-color:#C9D8F5"><b style="color:#2F5BB7">'+fol+'</b><span style="color:#2F5BB7">de folga</span></div>'+(aus?'<div class="tile"><b>'+aus+'</b><span>atestado / afastados</span></div>':'')+'</div>';
+    h+='<div class="grupoT" style="margin-top:14px">Últimas batidas · mais recente em cima</div><div class="lista">'+(bl.length?bl.map(function(x){return '<div class="row"><b style="width:52px;color:var(--pri,#0E4D32);font-family:Manrope,sans-serif">'+x.h+'</b><div class="t"><b>'+esc(x.nome)+'</b></div><span class="sub" style="'+(x.at?'color:var(--bt)':'')+'">'+x.tp+(x.at?' · atraso':'')+'</span></div>';}).join(''):'<div class="sub">Nenhuma batida ainda.</div>')+'</div>';
+    h+='<div class="grupoT" style="margin-top:14px">Funcionários</div><div class="lista">';
     if(gr.bad.length||gr.warn.length)h+='<div class="grupoT">Precisa de atenção</div>'+gr.bad.concat(gr.warn).map(lin).join('');
     if(gr.wait.length)h+='<div class="grupoT">Ainda no horário de chegar</div>'+gr.wait.map(lin).join('');
     if(gr.ok.length)h+='<div class="grupoT">No horário</div>'+gr.ok.map(lin).join('');
@@ -332,9 +339,24 @@ function gHoje(data){
     h+='</div><button class="btn pri" onclick="abrir(\'lanc\')">+ Lançar falta, folga ou atestado</button>';
     $('gMain').innerHTML=h;
     $('hAtu').onclick=function(){gHoje(isoBR($('hData').value));};
+    if($('hFoto'))$('hFoto').onclick=fotoRelogio;
     $('hData').onchange=function(){gHoje(isoBR(this.value));};
     $('gMain').querySelectorAll('[data-c]').forEach(function(x){x.onclick=function(){S.espCod=x.dataset.c;S.espMes=brISO(r.data).slice(0,7);abrir('espelho');};});
   }).catch(erro);
+}
+
+// v121: foto da câmera do relógio (só o Celio). O programa do servidor tira a foto em até ~30 s.
+function fotoRelogio(){
+  var d=document.createElement('div');d.className='folhaF';var vivo=true,ped='',t0=Date.now();
+  function corpo(x){d.innerHTML='<div class="fl" style="max-width:520px"><div class="pg"></div><h3 style="margin:6px 0 2px">📷 Relógio de ponto agora</h3>'+x+'</div>';}
+  function fim(){vivo=false;d.remove();}
+  function espera(){corpo('<div class="tx" style="margin:6px 0 12px">Pedindo a foto ao relógio… pode levar até 1 minuto.</div><div style="height:300px;border-radius:14px;background:rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;font-size:40px">⏳</div><button class="bN" id="frF">Fechar</button>');d.querySelector('#frF').onclick=fim;}
+  function pedir(){espera();t0=Date.now();api({acao:'pontoFotoPedir'}).then(function(r){if(!r.ok)throw r.erro;ped=r.pedido;setTimeout(ver,5000);}).catch(function(e){fim();erro(e);});}
+  function ver(){if(!vivo)return;api({acao:'pontoFotoVer',pedido:ped}).then(function(r){if(!vivo)return;if(!r.ok)throw r.erro;
+    if(!r.pronta){if(Date.now()-t0>100000){corpo('<div class="tx" style="margin:6px 0 12px">O relógio não respondeu. Confira se o programa do servidor está ligado e tente de novo.</div><button class="bS" id="frO">Tentar de novo</button><button class="bN" id="frF">Fechar</button>');d.querySelector('#frO').onclick=pedir;d.querySelector('#frF').onclick=fim;return;}setTimeout(ver,4000);return;}
+    corpo('<div class="sub" style="margin-bottom:8px">Foto tirada às '+esc(r.quando)+' · câmera do relógio</div><img src="data:'+(r.mime||'image/jpeg')+';base64,'+r.b64+'" style="width:100%;max-height:62vh;object-fit:contain;border-radius:14px;background:#000"><div style="display:flex;gap:8px;margin-top:10px"><button class="bN" id="frF" style="flex:1;margin:0">Fechar</button><button class="bS" id="frO" style="flex:1;margin:0">📷 Tirar outra</button></div><div class="sub" style="text-align:center;margin-top:8px">A foto não fica salva — some quando fechar.</div>');
+    d.querySelector('#frF').onclick=fim;d.querySelector('#frO').onclick=pedir;}).catch(function(e){fim();erro(e);});}
+  d.onclick=function(e){if(e.target===d)fim();};document.body.appendChild(d);pedir();
 }
 
 // ----- ESPELHO -----
