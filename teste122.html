@@ -200,7 +200,7 @@ function tcLimpa(){try{Object.keys(localStorage).forEach(function(k){if(k.indexO
 function atualizando(on){var e=$('mpAtu');if(!e){e=document.createElement('div');e.id='mpAtu';e.style.cssText='position:fixed;top:8px;right:8px;z-index:60;background:rgba(14,77,50,.92);color:#CFE5D7;font:600 11px Manrope,system-ui,sans-serif;padding:4px 10px;border-radius:999px;pointer-events:none;transition:opacity .2s';e.textContent='atualizando…';document.body.appendChild(e);}e.style.opacity=on?'1':'0';}
 function apiTela(p,cb){
   var k=tcKey(p),nav=S.nav,pr=S.preP[k];if(pr)delete S.preP[k];
-  var c=pr?null:tcGet(k),mostrou=null;
+  var c=tcGet(k),mostrou=null;
   if(c&&c.ok){try{cb(c,true);mostrou=JSON.stringify(c);}catch(e){}atualizando(true);}
   return (pr||api(p)).then(function(r){
     if(mostrou)atualizando(false);
