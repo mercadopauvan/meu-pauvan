@@ -60,7 +60,9 @@ body.escuro #tLogin .btn.pri{background:#9BE36D;border-color:#9BE36D;color:#0620
 body.escuro .mpNome,.mpBr .mpNome{color:#fff}body.escuro .mpNome span,.mpBr .mpNome span{color:#9BE36D}
 .mpSlo{font-size:12.5px;color:#5B6B60;white-space:nowrap;margin-top:6px}.mpSlo b{color:#0B3D27;font-weight:800}
 body.escuro .mpSlo{color:#CFE5D7}body.escuro .mpSlo b{color:#9BE36D}
-.mpBr{display:flex;align-items:center;gap:10px}.mpBr small{display:block;font-family:Inter,sans-serif;font-weight:500;font-size:11.5px;color:#A9CDB6;margin-top:2px;letter-spacing:.2px}
+.mpBr{display:flex;align-items:center;gap:10px}
+.mpApps{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font:700 12px Manrope,system-ui,sans-serif;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:4px 10px;text-decoration:none;margin-bottom:8px;width:max-content}
+.mpApps:active{background:rgba(255,255,255,.3)}.mpBr small{display:block;font-family:Inter,sans-serif;font-weight:500;font-size:11.5px;color:#A9CDB6;margin-top:2px;letter-spacing:.2px}
 /* gestão */
 .app{display:flex;min-height:100vh}
 .side{width:230px;flex:none;background:var(--verde);color:#E7F1EA;padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;overflow:auto}
@@ -176,6 +178,7 @@ body.escuro .folhaF .bS{background:#9BE36D;color:#062016}
 <!-- GESTÃO -->
 <div id="tGestao" class="app oculto">
  <nav class="side" id="gSide" aria-label="Menu da gestão do ponto">
+  <div id="gApps"></div>
   <div class="brand mpBr"><span id="gLogo"></span><div><div class="mpNome" style="font-size:19px;line-height:1">Meu <span>Pauvan</span></div><small>Gestão do ponto</small></div></div>
   <div id="gNav"></div>
   <div class="rod"><div id="gQuem"></div><button class="nav" style="padding:6px 0;color:#A9CDB6" onclick="irMeu()">Ver meu ponto</button><button class="nav" style="padding:6px 0;color:#A9CDB6" onclick="sair()">Sair</button></div>
@@ -261,8 +264,13 @@ function cpfFmt(c){c=String(c||'').replace(/\D/g,'');return c.length===11?c.slic
 function aplicarTema(){var t=ls('ponto_tema')||'auto';var esc_=t==='escuro'||(t==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);document.body.classList.toggle('escuro',!!esc_&&S.modo!=='gestao');var l=$('lLogo');if(l)l.innerHTML=logoMP(96,!esc_);var g=$('gLogo');if(g)g.innerHTML=logoMP(38,false);}
 
 // ===== entrada =====
+// botão "← Apps Pauvan": só para quem entrou pelo atalho "Gestão Meu Pauvan" do Apps Pauvan (vale até fechar a aba)
+try{if(/\/apps-pauvan\//.test(document.referrer||''))sessionStorage.setItem('mp_veioApps','1');}catch(e){}
+function veioApps(){try{return sessionStorage.getItem('mp_veioApps')==='1';}catch(e){return false;}}
+function voltaApps(){return veioApps()?'<a class="mpApps" href="https://mercadopauvan.github.io/apps-pauvan/">← Apps Pauvan</a>':'';}
 function iniciar(){
   aplicarTema();
+  var ga=$('gApps');if(ga)ga.innerHTML=voltaApps();
   var t=ls('ponto_token'),n=ls('ponto_nome');
   if(!t){var t2=ls('ci_token'),n2=ls('ci_quem');if(t2&&n2){t=t2;n=n2;}} // mesmo login do APPS PAUVAN neste aparelho
   if(t){S.token=t;S.nome=n;entrar();}else telaLogin();
@@ -367,7 +375,7 @@ function folha(o){return new Promise(function(res){var d=document.createElement(
   d.querySelector('#flS').onclick=function(){fim(true);};var n=d.querySelector('#flN');if(n)n.onclick=function(){fim(false);};});}
 function diaSemanaBR(br){var p=String(br).split('/');var dt=new Date(+p[2],+p[1]-1,+p[0]);return ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][dt.getDay()]+', '+br;}
 function funcOpts(sel,todos){var h=todos?'<option value="TODOS">Todos os funcionários</option>':'';(S.ini.funcionarios||[]).filter(function(f){return /ATIVO/i.test(f.situacao)&&!/DIARISTA/i.test(f.perfil);}).sort(function(a,b){return a.nome.localeCompare(b.nome);}).forEach(function(f){h+='<option value="'+f.codigo+'"'+(String(sel)===f.codigo?' selected':'')+'>'+esc(primeiroNome(f.nome))+' — '+esc(f.nome)+'</option>';});return h;}
-function topoCel(t,s){return '<div class="gTopoCel"><div class="mpBr">'+logoMP(38,false)+'<div><div class="mpNome" style="font-size:19px;line-height:1">Meu <span>Pauvan</span></div><small>Gestão do ponto'+(s?' · '+s:'')+'</small></div></div></div>';}
+function topoCel(t,s){return '<div class="gTopoCel">'+voltaApps()+'<div class="mpBr">'+logoMP(38,false)+'<div><div class="mpNome" style="font-size:19px;line-height:1">Meu <span>Pauvan</span></div><small>Gestão do ponto'+(s?' · '+s:'')+'</small></div></div></div>';}
 
 // ----- HOJE -----
 function gHoje(data){
@@ -770,7 +778,7 @@ function irMeu(t0){
   S.nav++;S.fNovo=true;
   S.modo='fun';aplicarTema();
   $('tGestao').classList.add('oculto');$('tFun').classList.remove('oculto');
-  $('fMain').innerHTML='<div class="fTopo"><div class="ola">Olá!</div><div>Carregando…</div></div>';
+  $('fMain').innerHTML='<div class="fTopo">'+voltaApps()+'<div class="ola">Olá!</div><div>Carregando…</div></div>';
   var primeira=true;
   apiTela({acao:'pontoMeu'},function(r){
     if(!r.ok)throw r.erro;S.meu=r;var segunda=!primeira;primeira=false;
@@ -792,7 +800,7 @@ function fAbrir(t,mesma){
   $('fTab').querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});
   var r=S.meu,h='';
   var dia=new Date(),dn=['domingo','segunda','terça','quarta','quinta','sexta','sábado'][dia.getDay()];
-  var topo='<div class="fTopo"><div style="display:flex;justify-content:space-between;align-items:center"><div class="mpBr">'+logoMP(32,false)+'<div><div class="mpNome" style="font-size:17px;line-height:1">Meu <span>Pauvan</span></div><small>Minha jornada</small></div></div><span style="font-size:12px;color:#A9CDB6">'+dn+', '+hojeBR().slice(0,5)+'</span></div><div class="ola">Olá, '+esc(r.nome||S.nome)+'!</div>';
+  var topo='<div class="fTopo">'+voltaApps()+'<div style="display:flex;justify-content:space-between;align-items:center"><div class="mpBr">'+logoMP(32,false)+'<div><div class="mpNome" style="font-size:17px;line-height:1">Meu <span>Pauvan</span></div><small>Minha jornada</small></div></div><span style="font-size:12px;color:#A9CDB6">'+dn+', '+hojeBR().slice(0,5)+'</span></div><div class="ola">Olá, '+esc(r.nome||S.nome)+'!</div>';
   if(t==='inicio'){
     var hj=r.hoje,mar=hj?hj.marcs:[],jor=r.jornadaHoje||[];
     topo+='<div style="font-size:13px;color:#CFE5D7">'+(mar.length?'✓ Você já bateu o ponto hoje às '+mar[0].replace('*',''):(jor.length?'Você ainda não bateu o ponto hoje':'Hoje é sua folga'))+'</div></div>';
