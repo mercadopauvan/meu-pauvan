@@ -265,7 +265,7 @@ function aplicarTema(){var t=ls('ponto_tema')||'auto';var esc_=t==='escuro'||(t=
 
 // ===== entrada =====
 // botão "← Apps Pauvan": só para quem entrou pelo atalho "Gestão Meu Pauvan" do Apps Pauvan (vale até fechar a aba)
-try{if(/\/apps-pauvan\//.test(document.referrer||''))sessionStorage.setItem('mp_veioApps','1');}catch(e){}
+try{if(/\/apps-pauvan\//.test(document.referrer||'')||/[?&]de=apps\b/.test(location.search)){sessionStorage.setItem('mp_veioApps','1');if(/[?&]de=apps\b/.test(location.search))history.replaceState(null,'',location.pathname+location.hash);}}catch(e){}
 function veioApps(){try{return sessionStorage.getItem('mp_veioApps')==='1';}catch(e){return false;}}
 function voltaApps(){return veioApps()?'<a class="mpApps" href="https://mercadopauvan.github.io/apps-pauvan/">← Apps Pauvan</a>':'';}
 function iniciar(){
