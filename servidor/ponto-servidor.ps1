@@ -5,7 +5,8 @@
 # Também tira a foto da câmera do relógio quando o Celio pede no app (gestão › Hoje)
 # e se atualiza sozinho: a cada 1 hora confere no GitHub (meu-pauvan/servidor) se tem versão nova.
 # Também lê a temperatura do container (compartimento 3, sensor XT Painel) a cada 2 minutos e manda para a tela
-# Gestão › Temperatura do container do APPS PAUVAN (acao contLeitura). Isso foi feito pelo chat APPS PAUVAN em 22/11/2026.
+# Gestão › Temperatura do container do APPS PAUVAN (acao contLeitura), e executa no aparelho os comandos que o Celio
+# manda pelo app (ligar/desligar, automático/manual, temperaturas). Feito pelo chat APPS PAUVAN em 22/11/2026.
 # Configuração: arquivo ponto-config.txt na mesma pasta.
 
 $ErrorActionPreference = 'Stop'
@@ -74,6 +75,36 @@ if ($cfg.CONTAINER_IP) { $contIp = $cfg.CONTAINER_IP }
 $contConferido = [DateTime]::MinValue
 $contFalhas = 0
 
+$contFeito = $null
+$contUltCmd = ''
+# container: executa no aparelho (XT Painel) o comando que veio do app, pelo mesmo endereço que a página dele usa.
+# Só mexe em: ventilador (manual_cmd), modo (mode) e temperaturas do automático (t_on/t_off). Nunca mexe no Wi-Fi.
+function ContComando($c, $st) {
+  $id = [string]$c.id
+  try {
+    $op = [string]$c.op
+    $on = 0; $off = 0
+    if ($op -eq 'LIGAR' -or $op -eq 'DESLIGAR') {
+      if ($st -and $st.mode_auto) { return @{ id = $id; ok = $false; erro = 'o aparelho está no AUTOMÁTICO: passe para MANUAL antes de ligar/desligar' } }
+      $b = @{ manual_cmd = ($op -eq 'LIGAR') }
+    } elseif ($op -eq 'AUTO') { $b = @{ mode = 'AUTO' } } elseif ($op -eq 'MANUAL') { $b = @{ mode = 'MANUAL' } } elseif ($op -eq 'LIMITES') {
+      $on = [double]$c.tOn; $off = [double]$c.tOff
+      if ($off -ge $on) { return @{ id = $id; ok = $false; erro = 'o desliga tem que ser menor que o liga' } }
+      $b = @{ t_on = $on; t_off = $off }
+    } else { return @{ id = $id; ok = $false; erro = ('comando desconhecido: ' + $op) } }
+    $json = $b | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod -Uri ('http://' + $contIp + '/api/save') -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 8
+    Start-Sleep -Seconds 2
+    $n = Invoke-RestMethod -Uri ('http://' + $contIp + '/api/status') -TimeoutSec 8
+    if ($n -is [string]) { $n = $n | ConvertFrom-Json }
+    $ok = $true
+    if ($op -eq 'LIGAR') { $ok = [bool]$n.relay } elseif ($op -eq 'DESLIGAR') { $ok = -not [bool]$n.relay } elseif ($op -eq 'AUTO') { $ok = [bool]$n.mode_auto } elseif ($op -eq 'MANUAL') { $ok = -not [bool]$n.mode_auto } elseif ($op -eq 'LIMITES') { $ok = ([math]::Abs([double]$n.t_on - $on) -lt 0.01) -and ([math]::Abs([double]$n.t_off - $off) -lt 0.01) }
+    if ($ok) { return @{ id = $id; ok = $true } }
+    return @{ id = $id; ok = $false; erro = 'o aparelho recebeu, mas não mudou (confira na página dele)' }
+  } catch {
+    return @{ id = $id; ok = $false; erro = ('aparelho não respondeu: ' + $_.Exception.Message) }
+  }
+}
 while ($true) {
   try {
     # 1) batidas novas (evento 7 = acesso liberado = ponto registrado)
@@ -161,10 +192,14 @@ while ($true) {
   }
   # 7) temperatura do container (compartimento 3): a cada 2 min lê o sensor e manda para o APPS PAUVAN.
   #    Fica separado do ponto: se o sensor estiver desligado (degelo) ou fora do ar, só registra e segue.
+  #    Versão 2: se o Celio mandou um comando pelo app (ligar/desligar, automático/manual, temperaturas), a resposta traz o
+  #    comando; o programa executa no aparelho (função ContComando) e manda a confirmação na leitura seguinte.
   if (((Get-Date) - $contConferido).TotalSeconds -ge 120) {
     $contConferido = Get-Date
     try {
-      $d = @{ acao = 'contLeitura'; comp = '3'; versao = 1 }
+      $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2 }
+      if ($contFeito) { $d.cmdFeito = $contFeito }
+      $s = $null
       try {
         $s = Invoke-RestMethod -Uri ('http://' + $contIp + '/api/status') -TimeoutSec 8
         if ($s -is [string]) { $s = $s | ConvertFrom-Json }
@@ -180,11 +215,19 @@ while ($true) {
         if ($contFalhas -gt 0) { Log ('Sensor do container voltou a responder: ' + $s.temp + ' graus') }
         $contFalhas = 0
       } catch {
+        $s = $null
         $contFalhas++
         $d.erro = 'sensor sem resposta: ' + $_.Exception.Message
         if ($contFalhas -eq 1) { Log ('Sensor do container sem resposta: ' + $_.Exception.Message) }
       }
-      $null = Nuvem $d
+      $r = Nuvem $d
+      $contFeito = $null
+      if ($r -and $r.cmd -and $r.cmd.id -and ([string]$r.cmd.id -ne $contUltCmd)) {
+        $contUltCmd = [string]$r.cmd.id
+        $contFeito = ContComando $r.cmd $s
+        Log ('Container: comando ' + $r.cmd.op + ' -> ' + $(if ($contFeito.ok) { 'feito' } else { 'ERRO ' + $contFeito.erro }))
+        $contConferido = (Get-Date).AddSeconds(-120)   # na próxima volta (20 s) já manda a confirmação e a leitura nova
+      }
     } catch {
       Log ('ERRO no container: ' + $_.Exception.Message)
     }
