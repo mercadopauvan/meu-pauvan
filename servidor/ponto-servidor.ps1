@@ -7,7 +7,8 @@
 # Também lê a temperatura do container (compartimento 3, sensor XT Painel) a cada 2 minutos e manda para a tela
 # Gestão › Temperatura do container do APPS PAUVAN (acao contLeitura), e executa no aparelho os comandos que o Celio
 # manda pelo app (ligar/desligar, automático/manual, temperaturas) em segundos, por uma escuta em processo separado
-# (container-log.txt). Feito pelo chat APPS PAUVAN em 22/11/2026.
+# (container-log.txt). Se o sensor mudar de IP, procura ele na rede pelo nome e passa a usar o IP novo (container-ip.txt).
+# Feito pelo chat APPS PAUVAN em 22 e 23/11/2026.
 # Configuração: arquivo ponto-config.txt na mesma pasta.
 
 $ErrorActionPreference = 'Stop'
@@ -73,6 +74,50 @@ $urlPrograma = 'https://raw.githubusercontent.com/mercadopauvan/meu-pauvan/main/
 # container: IP do sensor (pode trocar no ponto-config.txt com CONTAINER_IP=...)
 $contIp = '192.168.1.126'
 if ($cfg.CONTAINER_IP) { $contIp = $cfg.CONTAINER_IP }
+# se o sensor mudar de IP, o programa procura ele na rede pelo nome (id) e guarda o IP novo em container-ip.txt
+$contId = 'XT-A5100C'
+if ($cfg.CONTAINER_ID) { $contId = $cfg.CONTAINER_ID }
+$arqContIp = Join-Path $pasta 'container-ip.txt'
+if (Test-Path $arqContIp) { $tIp = ([string](Get-Content $arqContIp -Raw)).Trim(); if ($tIp -match '^\d+\.\d+\.\d+\.\d+$') { $contIp = $tIp } }
+$contProcurado = [DateTime]::MinValue
+# procura o sensor em todas as redes do PC (e na do IP antigo): pergunta /api/status de todos os endereços ao mesmo tempo (~3 s)
+function ContProcurar($idSensor, $ipAtual) {
+  Add-Type -AssemblyName System.Net.Http
+  $prefixos = @()
+  if ($ipAtual -match '^(\d+\.\d+\.\d+)\.\d+$') { $prefixos += $matches[1] }
+  try {
+    foreach ($ni in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+      if ([string]$ni.OperationalStatus -ne 'Up') { continue }
+      foreach ($ua in $ni.GetIPProperties().UnicastAddresses) {
+        $a = $ua.Address.ToString()
+        if ([string]$ua.Address.AddressFamily -eq 'InterNetwork' -and $a -match '^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\.' -and $a -match '^(\d+\.\d+\.\d+)\.\d+$') { $prefixos += $matches[1] }
+      }
+    }
+  } catch {}
+  $prefixos = @($prefixos | Select-Object -Unique)
+  $hc = New-Object System.Net.Http.HttpClient
+  $hc.Timeout = [TimeSpan]::FromSeconds(3)
+  $ips = @(); $tarefas = @()
+  foreach ($pf in $prefixos) {
+    for ($i = 1; $i -le 254; $i++) {
+      $ip = $pf + '.' + $i
+      $ips += $ip
+      $tarefas += $hc.GetStringAsync('http://' + $ip + '/api/status')
+    }
+  }
+  try { $null = [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$tarefas, 6000) } catch {}
+  $achado = $null
+  for ($k = 0; $k -lt $tarefas.Count; $k++) {
+    if ([string]$tarefas[$k].Status -eq 'RanToCompletion') {
+      try {
+        $j = $tarefas[$k].Result | ConvertFrom-Json
+        if ($j.id -and ([string]$j.id -eq $idSensor) -and ($null -ne $j.temp)) { $achado = $ips[$k] }
+      } catch {}
+    }
+  }
+  $hc.Dispose()
+  return $achado
+}
 $contConferido = [DateTime]::MinValue
 $contFalhas = 0
 
@@ -276,6 +321,24 @@ while ($true) {
         $contFalhas++
         $d.erro = 'sensor sem resposta: ' + $_.Exception.Message
         if ($contFalhas -eq 1) { Log ('Sensor do container sem resposta: ' + $_.Exception.Message) }
+        # 2 falhas seguidas (~4 min): procura o sensor na rede (no máximo 1 vez a cada 30 min)
+        if ($contFalhas -ge 2 -and ((Get-Date) - $contProcurado).TotalMinutes -ge 30) {
+          $contProcurado = Get-Date
+          $novoIp = $null
+          try { $novoIp = ContProcurar $contId $contIp } catch { Log ('ERRO ao procurar o sensor na rede: ' + $_.Exception.Message) }
+          if ($novoIp -and ($novoIp -ne $contIp)) {
+            $d.ipMudou = $contIp + ' -> ' + $novoIp
+            Log ('Sensor do container achado em outro IP: ' + $contIp + ' -> ' + $novoIp)
+            $contIp = $novoIp
+            try { Set-Content -Path $arqContIp -Value $novoIp -Encoding ASCII } catch {}
+            if ($contJob) { try { Stop-Job $contJob; Remove-Job $contJob -Force } catch {}; $contJob = $null }
+            $contJobIni = [DateTime]::MinValue
+            $contConferido = (Get-Date).AddSeconds(-120)   # lê no IP novo já na próxima volta
+          } elseif (-not $novoIp) {
+            $d.erro = $d.erro + ' (procurei o ' + $contId + ' na rede e não achei)'
+            Log ('Procurei o sensor ' + $contId + ' na rede e não achei.')
+          }
+        }
       }
       $null = Nuvem $d
     } catch {
