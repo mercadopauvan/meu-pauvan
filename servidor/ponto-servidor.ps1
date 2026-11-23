@@ -4,6 +4,8 @@
 # e troca a fala do relógio conforme o horário (bom dia / bom almoço / boa tarde / bom descanso), puxando os áudios da nuvem.
 # Também tira a foto da câmera do relógio quando o Celio pede no app (gestão › Hoje)
 # e se atualiza sozinho: a cada 1 hora confere no GitHub (meu-pauvan/servidor) se tem versão nova.
+# Também lê a temperatura do container (compartimento 3, sensor XT Painel) a cada 2 minutos e manda para a tela
+# Gestão › Temperatura do container do APPS PAUVAN (acao contLeitura). Isso foi feito pelo chat APPS PAUVAN em 22/11/2026.
 # Configuração: arquivo ponto-config.txt na mesma pasta.
 
 $ErrorActionPreference = 'Stop'
@@ -66,6 +68,11 @@ $audioVersao = ''
 $audioConferido = [DateTime]::MinValue
 $atualConferido = [DateTime]::MinValue
 $urlPrograma = 'https://raw.githubusercontent.com/mercadopauvan/meu-pauvan/main/servidor/ponto-servidor.ps1'
+# container: IP do sensor (pode trocar no ponto-config.txt com CONTAINER_IP=...)
+$contIp = '192.168.1.126'
+if ($cfg.CONTAINER_IP) { $contIp = $cfg.CONTAINER_IP }
+$contConferido = [DateTime]::MinValue
+$contFalhas = 0
 
 while ($true) {
   try {
@@ -151,6 +158,36 @@ while ($true) {
   } catch {
     $script:sessao = $null
     Log ('ERRO na foto do relógio: ' + $_.Exception.Message)
+  }
+  # 7) temperatura do container (compartimento 3): a cada 2 min lê o sensor e manda para o APPS PAUVAN.
+  #    Fica separado do ponto: se o sensor estiver desligado (degelo) ou fora do ar, só registra e segue.
+  if (((Get-Date) - $contConferido).TotalSeconds -ge 120) {
+    $contConferido = Get-Date
+    try {
+      $d = @{ acao = 'contLeitura'; comp = '3'; versao = 1 }
+      try {
+        $s = Invoke-RestMethod -Uri ('http://' + $contIp + '/api/status') -TimeoutSec 8
+        if ($s -is [string]) { $s = $s | ConvertFrom-Json }
+        if ($null -eq $s.temp) { throw 'leitura veio sem temperatura' }
+        $d.temp = [double]$s.temp
+        $d.relay = [bool]$s.relay
+        $d.auto = [bool]$s.mode_auto
+        $d.tOn = $s.t_on
+        $d.tOff = $s.t_off
+        $d.wifi = [bool]$s.wifi_ok
+        $d.mqtt = [bool]$s.mqtt_ok
+        $d.sensor = [string]$s.id
+        if ($contFalhas -gt 0) { Log ('Sensor do container voltou a responder: ' + $s.temp + ' graus') }
+        $contFalhas = 0
+      } catch {
+        $contFalhas++
+        $d.erro = 'sensor sem resposta: ' + $_.Exception.Message
+        if ($contFalhas -eq 1) { Log ('Sensor do container sem resposta: ' + $_.Exception.Message) }
+      }
+      $null = Nuvem $d
+    } catch {
+      Log ('ERRO no container: ' + $_.Exception.Message)
+    }
   }
   # 6) atualização automática: a cada 1 hora confere se tem versão nova deste programa no GitHub e se troca sozinho
   if (((Get-Date) - $atualConferido).TotalMinutes -ge 60) {
