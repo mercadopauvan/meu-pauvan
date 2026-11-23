@@ -81,6 +81,8 @@ $arqContIp = Join-Path $pasta 'container-ip.txt'
 if (Test-Path $arqContIp) { $tIp = ([string](Get-Content $arqContIp -Raw)).Trim(); if ($tIp -match '^\d+\.\d+\.\d+\.\d+$') { $contIp = $tIp } }
 $contProcurado = [DateTime]::MinValue
 # procura o sensor em todas as redes do PC (e na do IP antigo): pergunta /api/status de todos os endereços ao mesmo tempo (~3 s)
+# (guardada como texto para valer também dentro da escuta, que roda em outro processo)
+$contProcurarTxt = @'
 function ContProcurar($idSensor, $ipAtual) {
   Add-Type -AssemblyName System.Net.Http
   $prefixos = @()
@@ -118,6 +120,8 @@ function ContProcurar($idSensor, $ipAtual) {
   $hc.Dispose()
   return $achado
 }
+'@
+. ([scriptblock]::Create($contProcurarTxt))
 $contConferido = [DateTime]::MinValue
 $contFalhas = 0
 
@@ -129,7 +133,8 @@ $contJobIni = [DateTime]::MinValue
 # Só mexe em: ventilador (manual_cmd), modo (mode) e temperaturas do automático (t_on/t_off). Nunca mexe no Wi-Fi do aparelho.
 # Registro próprio: container-log.txt nesta pasta.
 $contEscuta = {
-  param($url, $chave, $ip, $pasta)
+  param($url, $chave, $ip, $pasta, $idSensor, $procTxt)
+  . ([scriptblock]::Create($procTxt))
   $ErrorActionPreference = 'Stop'
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   $arq = Join-Path $pasta 'container-log.txt'
@@ -189,12 +194,28 @@ $contEscuta = {
           Start-Sleep -Seconds 5
         } else {
           $ult = [string]$r.cmd.id
-          $st = $null
-          try { $st = JStatus } catch {}
-          $fUlt = ContComando $r.cmd $st
+          $ipAntes = $ip
+          if ([string]$r.cmd.op -eq 'PROCURAR') {
+            # botão "Procurar o sensor na rede agora" do app
+            $achou = $null
+            try { $achou = ContProcurar $idSensor $ip } catch { JLog ('ERRO ao procurar o sensor: ' + $_.Exception.Message) }
+            if ($achou) {
+              if ($achou -ne $ip) { $ip = $achou; try { Set-Content -Path (Join-Path $pasta 'container-ip.txt') -Value $achou -Encoding ASCII } catch {} }
+              $msg = 'está no IP ' + $achou
+              if ($achou -ne $ipAntes) { $msg = 'achado no IP ' + $achou + ' (antes ' + $ipAntes + ')' }
+              $fUlt = @{ id = [string]$r.cmd.id; ok = $true; msg = $msg }
+            } else {
+              $fUlt = @{ id = [string]$r.cmd.id; ok = $false; erro = ('não achei o ' + $idSensor + ' na rede (desligado ou fora do Wi-Fi?)') }
+            }
+          } else {
+            $st = $null
+            try { $st = JStatus } catch {}
+            $fUlt = ContComando $r.cmd $st
+          }
           JLog ('Comando ' + $r.cmd.op + ' (' + $r.cmd.quem + ') -> ' + $(if ($fUlt.ok) { 'feito' } else { 'ERRO ' + $fUlt.erro }))
           # confirma e já manda a leitura nova (a tela mostra o ventilador/modo atualizado)
           $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2; soLeitura = 1; cmdFeito = $fUlt }
+          if ($ip -ne $ipAntes) { $d.ipMudou = $ipAntes + ' -> ' + $ip }
           try {
             $s = JStatus
             $d.temp = [double]$s.temp; $d.relay = [bool]$s.relay; $d.auto = [bool]$s.mode_auto
@@ -302,6 +323,11 @@ while ($true) {
   if (((Get-Date) - $contConferido).TotalSeconds -ge 120) {
     $contConferido = Get-Date
     try {
+      # se a escuta achou o sensor em outro IP (botão Procurar do app), passa a usar o mesmo
+      if (Test-Path $arqContIp) {
+        $tIp = ([string](Get-Content $arqContIp -Raw)).Trim()
+        if (($tIp -match '^\d+\.\d+\.\d+\.\d+$') -and ($tIp -ne $contIp)) { Log ('Container: passando a usar o IP ' + $tIp + ' (antes ' + $contIp + ')'); $contIp = $tIp; $contFalhas = 0 }
+      }
       $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2; soLeitura = 1 }
       try {
         $s = Invoke-RestMethod -Uri ('http://' + $contIp + '/api/status') -TimeoutSec 8
@@ -350,7 +376,7 @@ while ($true) {
     $contJobIni = Get-Date
     try {
       if ($contJob) { Remove-Job $contJob -Force -ErrorAction SilentlyContinue; Log 'Escuta do container tinha parado; reiniciando.' }
-      $contJob = Start-Job -ScriptBlock $contEscuta -ArgumentList $cfg.URL_APP, $cfg.CHAVE, $contIp, $pasta
+      $contJob = Start-Job -ScriptBlock $contEscuta -ArgumentList $cfg.URL_APP, $cfg.CHAVE, $contIp, $pasta, $contId, $contProcurarTxt
     } catch {
       Log ('ERRO ao iniciar a escuta do container: ' + $_.Exception.Message)
     }
