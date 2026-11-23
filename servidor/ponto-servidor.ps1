@@ -214,7 +214,7 @@ $contEscuta = {
           }
           JLog ('Comando ' + $r.cmd.op + ' (' + $r.cmd.quem + ') -> ' + $(if ($fUlt.ok) { 'feito' } else { 'ERRO ' + $fUlt.erro }))
           # confirma e já manda a leitura nova (a tela mostra o ventilador/modo atualizado)
-          $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2; soLeitura = 1; cmdFeito = $fUlt }
+          $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2; soLeitura = 1; cmdFeito = $fUlt; ip = $ip }
           if ($ip -ne $ipAntes) { $d.ipMudou = $ipAntes + ' -> ' + $ip }
           try {
             $s = JStatus
@@ -328,7 +328,7 @@ while ($true) {
         $tIp = ([string](Get-Content $arqContIp -Raw)).Trim()
         if (($tIp -match '^\d+\.\d+\.\d+\.\d+$') -and ($tIp -ne $contIp)) { Log ('Container: passando a usar o IP ' + $tIp + ' (antes ' + $contIp + ')'); $contIp = $tIp; $contFalhas = 0 }
       }
-      $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2; soLeitura = 1 }
+      $d = @{ acao = 'contLeitura'; comp = '3'; versao = 2; soLeitura = 1; ip = $contIp }   # ip: aparece na tela do app
       try {
         $s = Invoke-RestMethod -Uri ('http://' + $contIp + '/api/status') -TimeoutSec 8
         if ($s -is [string]) { $s = $s | ConvertFrom-Json }
