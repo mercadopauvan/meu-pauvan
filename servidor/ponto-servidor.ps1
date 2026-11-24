@@ -8,7 +8,8 @@
 # Gestão › Temperatura do container do APPS PAUVAN (acao contLeitura), e executa no aparelho os comandos que o Celio
 # manda pelo app (ligar/desligar, automático/manual, temperaturas) em segundos, por uma escuta em processo separado
 # (container-log.txt). Se o sensor mudar de IP, procura ele na rede pelo nome e passa a usar o IP novo (container-ip.txt).
-# Feito pelo chat APPS PAUVAN em 22 e 23/11/2026.
+# Também lê a CERVEJEIRA (controlador XT, CERVEJEIRA_IP, padrão 192.168.1.137) a cada 2 minutos — só leitura, nunca manda comando.
+# Feito pelo chat APPS PAUVAN em 22 e 23/11/2026 (cervejeira em 24/11/2026).
 # Configuração: arquivo ponto-config.txt na mesma pasta.
 
 $ErrorActionPreference = 'Stop'
@@ -80,6 +81,11 @@ if ($cfg.CONTAINER_ID) { $contId = $cfg.CONTAINER_ID }
 $arqContIp = Join-Path $pasta 'container-ip.txt'
 if (Test-Path $arqContIp) { $tIp = ([string](Get-Content $arqContIp -Raw)).Trim(); if ($tIp -match '^\d+\.\d+\.\d+\.\d+$') { $contIp = $tIp } }
 $contProcurado = [DateTime]::MinValue
+# cervejeira: controlador XT "Cervejeira" — só leitura, a cada 2 min (IP pode trocar no ponto-config.txt com CERVEJEIRA_IP=...)
+$cervIp = '192.168.1.137'
+if ($cfg.CERVEJEIRA_IP) { $cervIp = $cfg.CERVEJEIRA_IP }
+$cervConferido = [DateTime]::MinValue
+$cervFalhas = 0
 # procura o sensor em todas as redes do PC (e na do IP antigo): pergunta /api/status de todos os endereços ao mesmo tempo (~3 s)
 # (guardada como texto para valer também dentro da escuta, que roda em outro processo)
 $contProcurarTxt = @'
@@ -369,6 +375,35 @@ while ($true) {
       $null = Nuvem $d
     } catch {
       Log ('ERRO no container: ' + $_.Exception.Message)
+    }
+  }
+  # 7c) cervejeira (controlador XT "Cervejeira"): a cada 2 min lê e manda para o APPS PAUVAN (comp CERV). SÓ LEITURA: nunca manda comando.
+  #     O status dela vem com nomes diferentes do sensor do container: rele (compressor), setpoint, hyst, wifi, mqtt.
+  if (((Get-Date) - $cervConferido).TotalSeconds -ge 120) {
+    $cervConferido = Get-Date
+    try {
+      $d = @{ acao = 'contLeitura'; comp = 'CERV'; versao = 1; soLeitura = 1; ip = $cervIp }
+      try {
+        $s = Invoke-RestMethod -Uri ('http://' + $cervIp + '/api/status') -TimeoutSec 8
+        if ($s -is [string]) { $s = $s | ConvertFrom-Json }
+        if ($null -eq $s.temp) { throw 'leitura veio sem temperatura' }
+        $d.temp = [double]$s.temp
+        $d.relay = [bool]$s.rele
+        $d.setpoint = $s.setpoint
+        $d.hyst = $s.hyst
+        $d.wifi = [bool]$s.wifi
+        $d.mqtt = [bool]$s.mqtt
+        $d.sensor = [string]$s.id
+        if ($cervFalhas -gt 0) { Log ('Cervejeira voltou a responder: ' + $s.temp + ' graus') }
+        $cervFalhas = 0
+      } catch {
+        $cervFalhas++
+        $d.erro = 'cervejeira sem resposta: ' + $_.Exception.Message
+        if ($cervFalhas -eq 1) { Log ('Cervejeira sem resposta no IP ' + $cervIp + ': ' + $_.Exception.Message) }
+      }
+      $null = Nuvem $d
+    } catch {
+      Log ('ERRO na cervejeira: ' + $_.Exception.Message)
     }
   }
   # 7b) escuta de comandos do container: se não estiver rodando, (re)inicia (no máximo 1 vez a cada 2 min)
