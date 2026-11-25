@@ -9,6 +9,7 @@
 # manda pelo app (ligar/desligar, automático/manual, temperaturas) em segundos, por uma escuta em processo separado
 # (container-log.txt). Se o sensor mudar de IP, procura ele na rede pelo nome e passa a usar o IP novo (container-ip.txt).
 # Também lê a CERVEJEIRA (controlador XT, CERVEJEIRA_IP, padrão 192.168.1.137) a cada 2 minutos — só leitura, nunca manda comando.
+# Se ela mudar de IP, procura na rede pelo formato da resposta e passa a usar o IP novo (cervejeira-ip.txt).
 # Feito pelo chat APPS PAUVAN em 22 e 23/11/2026 (cervejeira em 24/11/2026).
 # Configuração: arquivo ponto-config.txt na mesma pasta.
 
@@ -86,6 +87,10 @@ $cervIp = '192.168.1.137'
 if ($cfg.CERVEJEIRA_IP) { $cervIp = $cfg.CERVEJEIRA_IP }
 $cervConferido = [DateTime]::MinValue
 $cervFalhas = 0
+# se a cervejeira mudar de IP, o programa procura na rede (pelo formato da resposta: setpoint + hyst + rele) e guarda o IP novo em cervejeira-ip.txt
+$arqCervIp = Join-Path $pasta 'cervejeira-ip.txt'
+if (Test-Path $arqCervIp) { $tIp = ([string](Get-Content $arqCervIp -Raw)).Trim(); if ($tIp -match '^\d+\.\d+\.\d+\.\d+$') { $cervIp = $tIp } }
+$cervProcurado = [DateTime]::MinValue
 # procura o sensor em todas as redes do PC (e na do IP antigo): pergunta /api/status de todos os endereços ao mesmo tempo (~3 s)
 # (guardada como texto para valer também dentro da escuta, que roda em outro processo)
 $contProcurarTxt = @'
@@ -119,7 +124,10 @@ function ContProcurar($idSensor, $ipAtual) {
     if ([string]$tarefas[$k].Status -eq 'RanToCompletion') {
       try {
         $j = $tarefas[$k].Result | ConvertFrom-Json
-        if ($j.id -and ([string]$j.id -eq $idSensor) -and ($null -ne $j.temp)) { $achado = $ips[$k] }
+        if ($idSensor -eq 'CERVEJEIRA') {
+          # a cervejeira tem id genérico (XT-000000000000): reconhece pelo formato da resposta (setpoint + hyst + rele)
+          if (($null -ne $j.temp) -and ($null -ne $j.setpoint) -and ($null -ne $j.hyst) -and ($null -ne $j.rele) -and (-not $achado)) { $achado = $ips[$k] }
+        } elseif ($j.id -and ([string]$j.id -eq $idSensor) -and ($null -ne $j.temp)) { $achado = $ips[$k] }
       } catch {}
     }
   }
@@ -400,6 +408,22 @@ while ($true) {
         $cervFalhas++
         $d.erro = 'cervejeira sem resposta: ' + $_.Exception.Message
         if ($cervFalhas -eq 1) { Log ('Cervejeira sem resposta no IP ' + $cervIp + ': ' + $_.Exception.Message) }
+        # 2 falhas seguidas (~4 min): procura a cervejeira na rede (no máximo 1 vez a cada 30 min), igual ao sensor do container
+        if ($cervFalhas -ge 2 -and ((Get-Date) - $cervProcurado).TotalMinutes -ge 30) {
+          $cervProcurado = Get-Date
+          $novoIp = $null
+          try { $novoIp = ContProcurar 'CERVEJEIRA' $cervIp } catch { Log ('ERRO ao procurar a cervejeira na rede: ' + $_.Exception.Message) }
+          if ($novoIp -and ($novoIp -ne $cervIp)) {
+            $d.ipMudou = $cervIp + ' -> ' + $novoIp
+            Log ('Cervejeira achada em outro IP: ' + $cervIp + ' -> ' + $novoIp)
+            $cervIp = $novoIp
+            try { Set-Content -Path $arqCervIp -Value $novoIp -Encoding ASCII } catch {}
+            $cervConferido = (Get-Date).AddSeconds(-120)   # lê no IP novo já na próxima volta
+          } elseif (-not $novoIp) {
+            $d.erro = $d.erro + ' (procurei a cervejeira na rede e não achei)'
+            Log 'Procurei a cervejeira na rede e não achei.'
+          }
+        }
       }
       $null = Nuvem $d
     } catch {
