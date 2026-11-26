@@ -8,7 +8,10 @@
 # Gestão › Temperatura do container do APPS PAUVAN (acao contLeitura), e executa no aparelho os comandos que o Celio
 # manda pelo app (ligar/desligar, automático/manual, temperaturas) em segundos, por uma escuta em processo separado
 # (container-log.txt). Se o sensor mudar de IP, procura ele na rede pelo nome e passa a usar o IP novo (container-ip.txt).
-# Também lê a CERVEJEIRA (controlador XT, CERVEJEIRA_IP, padrão 192.168.1.137) a cada 2 minutos — só leitura, nunca manda comando.
+# Também lê a CERVEJEIRA (controlador XT, CERVEJEIRA_IP, padrão 192.168.1.137) a cada 2 minutos.
+# Cervejeira — DESLIGAR / LIGAR O MOTOR pelo app (25/11/2026): o controlador não tem liga/desliga, então desligar = regulagem (setpoint) em 30 graus
+# e ligar = voltar a regulagem e a histerese de antes (GET /api/saveTemp?setpoint=..&hyst=..). O valor de antes e a hora de volta ficam em
+# cervejeira-volta.txt; este programa religa sozinho na hora marcada, mesmo se o PC reiniciar no meio.
 # Se ela mudar de IP, procura na rede pelo formato da resposta e passa a usar o IP novo (cervejeira-ip.txt).
 # Feito pelo chat APPS PAUVAN em 22 e 23/11/2026 (cervejeira em 24/11/2026).
 # Configuração: arquivo ponto-config.txt na mesma pasta.
@@ -91,6 +94,87 @@ $cervFalhas = 0
 $arqCervIp = Join-Path $pasta 'cervejeira-ip.txt'
 if (Test-Path $arqCervIp) { $tIp = ([string](Get-Content $arqCervIp -Raw)).Trim(); if ($tIp -match '^\d+\.\d+\.\d+\.\d+$') { $cervIp = $tIp } }
 $cervProcurado = [DateTime]::MinValue
+# cervejeira: desligar / ligar o motor (guardado como texto para valer também dentro da escuta, que roda em outro processo)
+$arqCervVolta = Join-Path $pasta 'cervejeira-volta.txt'
+$cervVoltaTent = [DateTime]::MinValue
+$cervVoltaAvisou = $false
+$cervTxt = @'
+function CervNum($v) { return ([double]$v).ToString([Globalization.CultureInfo]::InvariantCulture) }
+function CervStatus($ipC) {
+  $s = Invoke-RestMethod -Uri ('http://' + $ipC + '/api/status') -TimeoutSec 8
+  if ($s -is [string]) { $s = $s | ConvertFrom-Json }
+  return $s
+}
+# grava a regulagem e a histerese no controlador e confere no /api/status se mudou mesmo
+function CervGravar($ipC, $sp, $hy) {
+  $u = 'http://' + $ipC + '/api/saveTemp?setpoint=' + (CervNum $sp) + '&hyst=' + (CervNum $hy)
+  $null = Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 8
+  Start-Sleep -Seconds 2
+  $n = CervStatus $ipC
+  return (([math]::Abs([double]$n.setpoint - [double]$sp) -lt 0.05) -and ([math]::Abs([double]$n.hyst - [double]$hy) -lt 0.05))
+}
+# desligamento em andamento (arquivo cervejeira-volta.txt): regulagem e histerese de antes + hora de volta
+function CervPendente($pastaC) {
+  $a = Join-Path $pastaC 'cervejeira-volta.txt'
+  if (-not (Test-Path $a)) { return $null }
+  try {
+    $j = ([string](Get-Content $a -Raw)) | ConvertFrom-Json
+    if (($null -eq $j.setpoint) -or ($null -eq $j.hyst) -or ($null -eq $j.volta)) { throw 'arquivo incompleto' }
+    return @{ setpoint = [double]$j.setpoint; hyst = [double]$j.hyst; quando = (New-Object DateTime ([int64]$j.volta)); quem = [string]$j.quem }
+  } catch {
+    try { Move-Item $a ($a + '.erro') -Force } catch {}
+    return $null
+  }
+}
+function CervDesligar($ipC, $pastaC, $c) {
+  $id = [string]$c.id
+  $a = Join-Path $pastaC 'cervejeira-volta.txt'
+  try {
+    $min = [int]$c.min
+    if ($min -lt 1 -or $min -gt 120) { return @{ id = $id; ok = $false; erro = 'tempo inválido (máximo 2 horas)' } }
+    $st = CervStatus $ipC
+    $sp = [double]$st.setpoint; $hy = [double]$st.hyst
+    $pend = CervPendente $pastaC
+    if ($pend) { $sp = $pend.setpoint; $hy = $pend.hyst }   # já estava desligado: mantém os valores de antes e só muda a hora de volta
+    elseif ($sp -gt 10) { return @{ id = $id; ok = $false; erro = ('a regulagem já está em ' + $sp + ' graus e não sei qual era a de antes: acerte no painel do controlador') } }
+    $volta = (Get-Date).AddMinutes($min)
+    # guarda ANTES de mexer: se o PC cair no meio, a volta acontece do mesmo jeito
+    Set-Content -Path $a -Value (@{ setpoint = $sp; hyst = $hy; volta = $volta.Ticks; voltaTxt = $volta.ToString('dd/MM/yyyy HH:mm:ss'); quem = [string]$c.quem; id = $id } | ConvertTo-Json -Compress) -Encoding UTF8
+    $ok = CervGravar $ipC 30 $hy
+    if (-not $ok) {
+      # não ficou em 30: desfaz já (a volta automática continua guardada se nem isso der certo)
+      $des = $false
+      try { $des = CervGravar $ipC $sp $hy } catch {}
+      if ($des -and (-not $pend)) { Remove-Item $a -Force -ErrorAction SilentlyContinue }
+      return @{ id = $id; ok = $false; erro = 'a cervejeira recebeu, mas a regulagem não foi para 30 graus (nada mudou)' }
+    }
+    return @{ id = $id; ok = $true; setpoint = $sp; hyst = $hy; msg = ('volta sozinho às ' + $volta.ToString('HH:mm')) }
+  } catch {
+    return @{ id = $id; ok = $false; erro = ('a cervejeira não respondeu: ' + $_.Exception.Message) }
+  }
+}
+function CervLigar($ipC, $pastaC, $c) {
+  $id = [string]$c.id
+  $a = Join-Path $pastaC 'cervejeira-volta.txt'
+  try {
+    $pend = CervPendente $pastaC
+    if ($pend) { $sp = $pend.setpoint; $hy = $pend.hyst }
+    elseif (($null -ne $c.setpoint) -and ($null -ne $c.hyst)) { $sp = [double]$c.setpoint; $hy = [double]$c.hyst }
+    else {
+      $st = CervStatus $ipC
+      if ([double]$st.setpoint -le 10) { return @{ id = $id; ok = $true; setpoint = [double]$st.setpoint; hyst = [double]$st.hyst; msg = 'já estava ligado' } }
+      return @{ id = $id; ok = $false; erro = 'não sei qual era a regulagem de antes: acerte no painel do controlador' }
+    }
+    $ok = CervGravar $ipC $sp $hy
+    if (-not $ok) { return @{ id = $id; ok = $false; erro = 'a cervejeira recebeu, mas a regulagem não voltou (confira no painel)' } }
+    Remove-Item $a -Force -ErrorAction SilentlyContinue
+    return @{ id = $id; ok = $true; setpoint = $sp; hyst = $hy }
+  } catch {
+    return @{ id = $id; ok = $false; erro = ('a cervejeira não respondeu: ' + $_.Exception.Message) }
+  }
+}
+'@
+. ([scriptblock]::Create($cervTxt))
 # procura o sensor em todas as redes do PC (e na do IP antigo): pergunta /api/status de todos os endereços ao mesmo tempo (~3 s)
 # (guardada como texto para valer também dentro da escuta, que roda em outro processo)
 $contProcurarTxt = @'
@@ -147,8 +231,9 @@ $contJobIni = [DateTime]::MinValue
 # Só mexe em: ventilador (manual_cmd), modo (mode) e temperaturas do automático (t_on/t_off). Nunca mexe no Wi-Fi do aparelho.
 # Registro próprio: container-log.txt nesta pasta.
 $contEscuta = {
-  param($url, $chave, $ip, $pasta, $idSensor, $procTxt)
+  param($url, $chave, $ip, $pasta, $idSensor, $procTxt, $cervIpIni, $cervTxt)
   . ([scriptblock]::Create($procTxt))
+  . ([scriptblock]::Create($cervTxt))
   $ErrorActionPreference = 'Stop'
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   $arq = Join-Path $pasta 'container-log.txt'
@@ -208,6 +293,20 @@ $contEscuta = {
           Start-Sleep -Seconds 5
         } else {
           $ult = [string]$r.cmd.id
+          if ([string]$r.cmd.comp -eq 'CERV') {
+            # cervejeira: desligar / ligar o motor (regulagem em 30 graus / regulagem de antes)
+            $cip = $cervIpIni
+            try { $aIp = Join-Path $pasta 'cervejeira-ip.txt'; if (Test-Path $aIp) { $tIp = ([string](Get-Content $aIp -Raw)).Trim(); if ($tIp -match '^\d+\.\d+\.\d+\.\d+$') { $cip = $tIp } } } catch {}
+            if ([string]$r.cmd.op -eq 'CERV_DESLIGAR') { $fUlt = CervDesligar $cip $pasta $r.cmd } elseif ([string]$r.cmd.op -eq 'CERV_LIGAR') { $fUlt = CervLigar $cip $pasta $r.cmd } else { $fUlt = @{ id = [string]$r.cmd.id; ok = $false; erro = ('comando desconhecido: ' + $r.cmd.op) } }
+            JLog ('Cervejeira (' + $cip + '): ' + $r.cmd.op + ' (' + $r.cmd.quem + ') -> ' + $(if ($fUlt.ok) { 'feito ' + $fUlt.msg } else { 'ERRO ' + $fUlt.erro }))
+            $null = JNuvem @{ acao = 'contFeito'; comp = 'CERV'; cmdFeito = $fUlt }
+            # já manda a leitura nova (a tela mostra a regulagem e o compressor atualizados)
+            try {
+              $s = CervStatus $cip
+              $null = JNuvem @{ acao = 'contLeitura'; comp = 'CERV'; versao = 2; soLeitura = 1; ip = $cip; temp = [double]$s.temp; relay = [bool]$s.rele; setpoint = $s.setpoint; hyst = $s.hyst; wifi = [bool]$s.wifi; mqtt = [bool]$s.mqtt; sensor = [string]$s.id }
+            } catch {}
+            continue
+          }
           $ipAntes = $ip
           if ([string]$r.cmd.op -eq 'PROCURAR') {
             # botão "Procurar o sensor na rede agora" do app
@@ -385,7 +484,32 @@ while ($true) {
       Log ('ERRO no container: ' + $_.Exception.Message)
     }
   }
-  # 7c) cervejeira (controlador XT "Cervejeira"): a cada 2 min lê e manda para o APPS PAUVAN (comp CERV). SÓ LEITURA: nunca manda comando.
+  # 7d) cervejeira: VOLTA AUTOMÁTICA do motor. Se há um desligamento guardado (cervejeira-volta.txt) e a hora já passou, volta a
+  #     regulagem e a histerese de antes. Vale também logo que o programa inicia (PC reiniciou no meio). Tenta de novo a cada 30 s até conseguir.
+  if ((Test-Path $arqCervVolta) -and (((Get-Date) - $cervVoltaTent).TotalSeconds -ge 30)) {
+    try {
+      $pend = CervPendente $pasta
+      if ($pend -and ((Get-Date) -ge $pend.quando)) {
+        $cervVoltaTent = Get-Date
+        $okV = $false; $erroV = 'a regulagem não voltou (confira no painel)'
+        try { $okV = CervGravar $cervIp $pend.setpoint $pend.hyst } catch { $erroV = 'a cervejeira não respondeu no IP ' + $cervIp + ': ' + $_.Exception.Message }
+        if ($okV) {
+          Remove-Item $arqCervVolta -Force -ErrorAction SilentlyContinue
+          $cervVoltaAvisou = $false
+          Log ('Cervejeira: motor religado sozinho (regulagem ' + $pend.setpoint + ', histerese ' + $pend.hyst + ')')
+          try { $null = Nuvem @{ acao = 'contFeito'; comp = 'CERV'; cervVolta = @{ ok = $true; setpoint = $pend.setpoint; hyst = $pend.hyst } } } catch { Log ('ERRO ao avisar a volta da cervejeira: ' + $_.Exception.Message) }
+          $cervConferido = [DateTime]::MinValue   # manda a leitura nova já nesta volta
+        } elseif (-not $cervVoltaAvisou) {
+          $cervVoltaAvisou = $true
+          Log ('Cervejeira: NÃO consegui religar o motor: ' + $erroV + ' (continuo tentando a cada 30 s)')
+          try { $null = Nuvem @{ acao = 'contFeito'; comp = 'CERV'; cervVolta = @{ ok = $false; erro = $erroV } } } catch {}
+        }
+      }
+    } catch {
+      Log ('ERRO na volta da cervejeira: ' + $_.Exception.Message)
+    }
+  }
+  # 7c) cervejeira (controlador XT "Cervejeira"): a cada 2 min lê e manda para o APPS PAUVAN (comp CERV).
   #     O status dela vem com nomes diferentes do sensor do container: rele (compressor), setpoint, hyst, wifi, mqtt.
   if (((Get-Date) - $cervConferido).TotalSeconds -ge 120) {
     $cervConferido = Get-Date
@@ -435,7 +559,7 @@ while ($true) {
     $contJobIni = Get-Date
     try {
       if ($contJob) { Remove-Job $contJob -Force -ErrorAction SilentlyContinue; Log 'Escuta do container tinha parado; reiniciando.' }
-      $contJob = Start-Job -ScriptBlock $contEscuta -ArgumentList $cfg.URL_APP, $cfg.CHAVE, $contIp, $pasta, $contId, $contProcurarTxt
+      $contJob = Start-Job -ScriptBlock $contEscuta -ArgumentList $cfg.URL_APP, $cfg.CHAVE, $contIp, $pasta, $contId, $contProcurarTxt, $cervIp, $cervTxt
     } catch {
       Log ('ERRO ao iniciar a escuta do container: ' + $_.Exception.Message)
     }
